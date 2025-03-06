@@ -26,13 +26,16 @@ import {
   IonToolbar,
   useIonRouter,
   IonInput,
-  IonTextarea
+  IonTextarea,
+  IonBadge
 } from "@ionic/react";
 import {
   checkmarkCircleOutline,
   documentOutline,
   codeOutline,
-  closeCircleOutline
+  closeCircleOutline,
+  alertCircleOutline,
+  warningOutline
 } from "ionicons/icons";
 import React, { useEffect, useState, useRef } from "react";
 import ImportOscal from "../components/ImportOscal";
@@ -40,6 +43,7 @@ import { RenderOscal } from "../components/oscal/RenderOscal";
 import { useOscal } from "../context/OscalContext";
 import { ApiService, ConversionService } from "../services/api";
 import { OscalPackage } from "../types";
+import { parseSarif } from "../services/sarifService";
 import { JSONTree } from "react-json-tree";
 import "./Documents.css";
 
@@ -60,6 +64,10 @@ const Documents: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string>("");
   const [toastColor, setToastColor] = useState<string>("success");
   const [showToast, setShowToast] = useState(false);
+  
+  // Validation state
+  const [validationResults, setValidationResults] = useState<string[]>([]);
+  const [showValidationPanel, setShowValidationPanel] = useState(false);
   
   // Metapath state
   const [metapathExpression, setMetapathExpression] = useState<string>("");
@@ -136,15 +144,25 @@ const Documents: React.FC = () => {
     if (!selectedDocument || !documentId) return;
     
     setValidating(true);
+    setShowValidationPanel(true);
     try {
-      await ApiService.validatePackageDocument(packageId, documentId);
-      setToastColor('success')
-      setToastMessage("Document validation successful");
+      const sarifData = await ApiService.validatePackageDocument(packageId, documentId);
+      const results = parseSarif(sarifData);
+      setValidationResults(results);
+      
+      if (results.length === 0) {
+        setToastColor('success');
+        setToastMessage("Document validation successful");
+      } else {
+        setToastColor('warning');
+        setToastMessage(`Validation found ${results.length} issue${results.length === 1 ? '' : 's'}`);
+      }
       setShowToast(true);
     } catch (error) {
-      setToastColor('danger')
+      setToastColor('danger');
       setToastMessage(`Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setShowToast(true);
+      setValidationResults(['Validation service error: Unable to validate document']);
     } finally {
       setValidating(false);
     }
@@ -228,7 +246,7 @@ const Documents: React.FC = () => {
   };
 
   return (
-    <IonSplitPane contentId="documents-main">
+    <IonSplitPane contentId="documents-main" when={menuEnabled}>
       <IonMenu contentId="documents-main" side="start">
         <IonHeader>
           <IonToolbar>
@@ -276,6 +294,46 @@ const Documents: React.FC = () => {
       </IonMenu>
       
       <IonPage id="documents-main">
+        {showValidationPanel && (
+          <IonMenu contentId="documents-main" side="end" type="overlay">
+            <IonHeader>
+              <IonToolbar>
+                <IonTitle>Validation Results</IonTitle>
+                <IonButtons slot="end">
+                  <IonButton onClick={() => setShowValidationPanel(false)}>
+                    <IonIcon icon={closeCircleOutline} />
+                  </IonButton>
+                </IonButtons>
+              </IonToolbar>
+            </IonHeader>
+            <IonContent>
+              {validationResults.length === 0 ? (
+                <IonItem>
+                  <IonIcon icon={checkmarkCircleOutline} color="success" slot="start" />
+                  <IonLabel>Document is valid</IonLabel>
+                </IonItem>
+              ) : (
+                <IonList>
+                  {validationResults.map((result, index) => {
+                    const [ruleId, message] = result.includes(':') 
+                      ? [result.substring(0, result.indexOf(':')), result.substring(result.indexOf(':') + 1).trim()] 
+                      : ['Error', result];
+                    
+                    return (
+                      <IonItem key={index}>
+                        <IonIcon icon={alertCircleOutline} color="warning" slot="start" />
+                        <IonLabel>
+                          <h2>{ruleId}</h2>
+                          <p>{message}</p>
+                        </IonLabel>
+                      </IonItem>
+                    );
+                  })}
+                </IonList>
+              )}
+            </IonContent>
+          </IonMenu>
+        )}
         <IonToast
           isOpen={showToast}
           onDidDismiss={() => setShowToast(false)}
@@ -295,6 +353,9 @@ const Documents: React.FC = () => {
                 <IonButton onClick={handleValidate} disabled={validating}>
                   <IonIcon slot="start" icon={checkmarkCircleOutline} />
                   {validating ? 'Validating...' : 'Validate'}
+                  {validationResults.length > 0 && (
+                    <IonBadge color="warning" slot="end">{validationResults.length}</IonBadge>
+                  )}
                 </IonButton>
                 
                 <IonSelect 
