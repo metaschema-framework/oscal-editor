@@ -35,7 +35,7 @@ interface OscalState {
   read: (type: EntityType, id: string) => Promise<any>;
   all: (type: EntityType) => Promise<Record<string, any>>;
   packages: () => Promise<string[]>;
-  documents: () => Promise<string[]>;
+  documents: () => Promise<any[]>;
   destroy: (type: EntityType, id: string) => Promise<void>;
   validateEntity: (type: EntityType, entity: any) => boolean;
   setPackage: (packageId: string) => boolean;

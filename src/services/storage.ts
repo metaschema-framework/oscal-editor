@@ -18,9 +18,9 @@ export const StorageService = {
     return await ApiService.getPackageFile(packageId, documentId);
   },
 
-  documents: async (packageId: string): Promise<string[]> => {
+  documents: async (packageId: string): Promise<any[]> => {
     const files = await ApiService.listPackageFiles(packageId);
-    return files.map(file => file.name);
+    return files;
   },
 
   packages: async (): Promise<string[]> => {

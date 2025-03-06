@@ -3,6 +3,7 @@ interface PackageFile {
   size: number;
   lastModified: string;
   mimeType: string;
+  path: string;
 }
 
 interface ConversionService {
@@ -63,13 +64,6 @@ export const ConversionService: ConversionService = {
     return response.blob();
   },
 };
-
-interface PackageFile {
-  name: string;
-  size: number;
-  lastModified: string;
-  mimeType: string;
-}
 
 export const ApiService = {
   // Validate an OSCAL document

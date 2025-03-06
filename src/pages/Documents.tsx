@@ -45,6 +45,7 @@ import "./Documents.css";
 
 interface DocumentEntry {
   id: string;
+  path: string;
 }
 
 const Documents: React.FC = () => {
@@ -73,7 +74,10 @@ const Documents: React.FC = () => {
       setLoading(true);
       try {
         const docs = await documents();
-        const entries: DocumentEntry[] = docs.map(filename => ({ id: filename }));
+        const entries: DocumentEntry[] = docs.map(file => ({ 
+          id: typeof file === 'string' ? file : file.name,
+          path: typeof file === 'string' ? '' : (file.path || '')
+        }));
         setDocumentList(entries);
       } catch (error) {
         console.error('Failed to load documents:', error);
@@ -249,7 +253,7 @@ const Documents: React.FC = () => {
             </IonItem>
           ) : (
             <IonList>
-              {documentList.map(({id}) => (
+              {documentList.map(({id, path}) => (
                 <IonItem 
                   key={id} 
                   button 
@@ -262,6 +266,7 @@ const Documents: React.FC = () => {
                   <IonIcon icon={documentOutline} slot="start" />
                   <IonLabel>
                     {id}
+                    {path && <div style={{ fontSize: '0.8em', color: 'var(--ion-color-medium)' }}>Path: {path}</div>}
                   </IonLabel>
                 </IonItem>
               ))}
