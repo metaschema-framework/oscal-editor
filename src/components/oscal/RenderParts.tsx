@@ -13,7 +13,7 @@ export const RenderParts: React.FC<RenderPartsProps> = ({ parts }) => {
   return (
     <IonList>
       {parts.map((part, index) => (
-        <div key={part.id || index} className="part-item ion-padding-vertical">
+        <div key={index} className="part-item ion-padding-vertical">
           {part.title && <h4 className="part-title">{part.title}</h4>}
           {part.prose && <div className="part-prose">{part.prose}</div>}
           {part.props && <RenderProps props={part.props} />}

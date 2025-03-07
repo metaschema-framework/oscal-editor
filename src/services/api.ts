@@ -73,8 +73,17 @@ interface PackageFile {
 
 export const ApiService = {
   // Validate an OSCAL document
-  validateDocument: async (content: string, format: string): Promise<any> => {
-    const response = await fetch(`/api/validate?format=${format}`, {
+  validateDocument: async (content: string, format: string, constraintFiles?: string[]): Promise<any> => {
+    let url = `/api/validate?format=${format}`;
+    
+    // Add constraint files if provided
+    if (constraintFiles && constraintFiles.length > 0) {
+      constraintFiles.forEach(file => {
+        url += `&constraint=${encodeURIComponent(file)}`;
+      });
+    }
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': getContentTypeFromFormat(format),
@@ -90,8 +99,17 @@ export const ApiService = {
     return response.json();
   },
 
-  validatePackageDocument: async (packageId: string, documentId: string): Promise<any> => {
-    const response = await fetch(`/api/validate?document=file://~/.oscal/packages/${packageId}/${documentId}`, {
+  validatePackageDocument: async (packageId: string, documentId: string, constraintFiles?: string[]): Promise<any> => {
+    let url = `/api/validate?document=file://~/.oscal/packages/${packageId}/${documentId}`;
+    
+    // Add constraint files if provided
+    if (constraintFiles && constraintFiles.length > 0) {
+      constraintFiles.forEach(file => {
+        url += `&constraint=${encodeURIComponent(file)}`;
+      });
+    }
+    
+    const response = await fetch(url, {
       method: 'GET',
     });
 
@@ -111,6 +129,21 @@ export const ApiService = {
         'Content-Type': getContentTypeFromFormat(format),
       },
       body: content,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Profile resolution failed: ${errorText}`);
+    }
+
+    return response.text();
+  },
+
+  // Resolve a profile from a package document (using GET endpoint)
+  resolvePackageProfile: async (packageId: string, documentId: string): Promise<string> => {
+    // Use package_id and document_id parameters instead of a file path with tilde
+    const response = await fetch(`/api/resolve-profile?package_id=${encodeURIComponent(packageId)}&document_id=${encodeURIComponent(documentId)}`, {
+      method: 'GET',
     });
 
     if (!response.ok) {
