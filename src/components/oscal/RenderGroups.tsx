@@ -1,69 +1,55 @@
-import React, { useState } from 'react';
-import { IonAccordion, IonItem, IonLabel, IonList } from '@ionic/react';
+import React from 'react';
+import { IonAccordion, IonItem, IonLabel } from '@ionic/react';
 import { ControlGroup } from '../../types';
 import { RenderControls } from './RenderControls';
 import { RenderProps } from './RenderProps';
 import { RenderParts } from './RenderParts';
-import { SearchFilterControls, OscalItem } from './SearchFilterControls';
+import { Virtuoso } from 'react-virtuoso';
 
 interface RenderGroupsProps {
   groups: ControlGroup[];
 }
 
 export const RenderGroups: React.FC<RenderGroupsProps> = ({ groups }) => {
-  const [filteredItems, setFilteredItems] = useState<OscalItem[]>([]);
-  
   if (!groups?.length) return null;
 
-  const handleFilteredItemsChange = (items: OscalItem[]) => {
-    setFilteredItems(items);
+  // Flatten nested groups into a single array
+  const flattenGroups = (groups: ControlGroup[]): ControlGroup[] => {
+    return groups.reduce<ControlGroup[]>((acc, group) => {
+      acc.push(group);
+      if (group.groups?.length) {
+        acc.push(...flattenGroups(group.groups));
+      }
+      return acc;
+    }, []);
   };
 
-  // Get only group items that match the original groups
-  const getFilteredGroups = () => {
-    if (filteredItems.length === 0) {
-      return groups;
-    }
-    
-    return filteredItems
-      .filter(item => item.type === 'group')
-      .map(item => item.originalGroup)
-      .filter((group): group is ControlGroup => group !== undefined);
-  };
+  const flatGroups = flattenGroups(groups);
 
   return (
-    <IonAccordion value="groups">
-      <IonItem slot="header" color="light">
-        <IonLabel>Groups</IonLabel>
-      </IonItem>
-      <div className="ion-padding" slot="content">
-        <SearchFilterControls 
-          catalog={{ groups }} 
-          onFilteredItemsChange={handleFilteredItemsChange} 
-        />
-        
-        <div className="groups-container">
-          <IonList>
-            {getFilteredGroups().map((group, index) => (
-              <div key={group.id || index} className="group-item ion-padding-vertical">
-                {group.parts && <RenderParts parts={group.parts} />}
-                <h3 className="group-title">{group.title}</h3>
-                {group.props && <RenderProps props={group.props} />}
-                {'controls' in group && <RenderControls 
-                        controls={group['controls']||[]} 
-                        isNested={true} 
-                      />
-                }
-                {group.groups && group.groups.length > 0 && (
-                  <div className="nested-content ion-padding">
-                    <RenderGroups groups={group.groups} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </IonList>
-        </div>
-      </div>
-    </IonAccordion>
+    <Virtuoso
+      style={{ height: '100%', minHeight: '400px' }}
+      totalCount={flatGroups.length}
+      itemContent={index => {
+        const group = flatGroups[index];
+        return (
+          <IonAccordion key={group.id || index} value={`group-${group.id || index}`}>
+            <IonItem slot="header" color="light">
+              <IonLabel>
+                <h2>{group.title}</h2>
+                <p>ID: {group.id}</p>
+              </IonLabel>
+            </IonItem>
+            <div className="ion-padding" slot="content">
+              {group.props && <RenderProps props={group.props} />}
+              {group.parts && <RenderParts parts={group.parts} />}
+              {'controls' in group && group.controls && group.controls.length > 0 && (
+                <RenderControls controls={group.controls} />
+              )}
+            </div>
+          </IonAccordion>
+        );
+      }}
+    />
   );
 };

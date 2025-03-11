@@ -123,7 +123,7 @@ export const ApiService = {
 
   // Resolve a profile
   resolveProfile: async (content: string, format: string): Promise<string> => {
-    const response = await fetch(`/api/resolve-profile?format=${format}`, {
+    const response = await fetch(`/api/resolve?format=${format}`, {
       method: 'POST',
       headers: {
         'Content-Type': getContentTypeFromFormat(format),
@@ -142,7 +142,7 @@ export const ApiService = {
   // Resolve a profile from a package document (using GET endpoint)
   resolvePackageProfile: async (packageId: string, documentId: string): Promise<string> => {
     // Use package_id and document_id parameters instead of a file path with tilde
-    const response = await fetch(`/api/resolve-profile?package_id=${encodeURIComponent(packageId)}&document_id=${encodeURIComponent(documentId)}`, {
+    const response = await fetch(`/api/resolve?document=~/.oscal/packages/${encodeURIComponent(packageId+"/"+encodeURIComponent(documentId))}`, {
       method: 'GET',
     });
 
@@ -223,7 +223,7 @@ export const ApiService = {
 
   // Execute a metapath query on a document
   queryDocument: async (content: string, expression: string, format: string, module: string = "https://raw.githubusercontent.com/usnistgov/OSCAL/refs/heads/main/src/metaschema/oscal_complete_metaschema.xml"): Promise<string> => {
-    const response = await fetch(`/api/query?expression=${encodeURIComponent(expression)}&module=${encodeURIComponent(module)}`, {
+    const response = await fetch(`/api/query?expression=${encodeURIComponent(expression)}&module=${encodeURIComponent(module)}&format=JSON`, {
       method: 'POST',
       headers: {
         'Content-Type': getContentTypeFromFormat(format),

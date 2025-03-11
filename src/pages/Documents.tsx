@@ -1,20 +1,24 @@
 import {
+  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
+  IonChip,
   IonCol,
   IonContent,
+  IonFooter,
   IonGrid,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
-  IonMenuButton,
   IonPage,
+  IonProgressBar,
   IonRow,
   IonSelect,
   IonSelectOption,
@@ -23,30 +27,27 @@ import {
   IonToast,
   IonToolbar,
   useIonRouter,
-  IonInput,
-  IonBadge,
-  IonFooter,
 } from "@ionic/react";
-import { Virtuoso } from "react-virtuoso";
-import ConstraintSelector from "../components/ConstraintSelector";
 import {
-  checkmarkCircleOutline,
-  documentOutline,
-  codeOutline,
-  closeCircleOutline,
-  chevronForward,
-  chevronBack,
-  linkOutline,
   alertCircleOutline,
+  checkmarkCircleOutline,
+  chevronBack,
+  chevronForward,
+  closeCircleOutline,
+  codeOutline,
+  documentOutline,
 } from "ionicons/icons";
 import React, { useEffect, useState } from "react";
+import { JSONTree } from "react-json-tree";
+import { Virtuoso } from "react-virtuoso";
+import ConstraintSelector from "../components/ConstraintSelector";
 import ImportOscal from "../components/ImportOscal";
 import { RenderOscal } from "../components/oscal/RenderOscal";
+import ValidationResultsModal from "../components/ValidationResultsModal";
 import { useOscal } from "../context/OscalContext";
 import { ApiService, ConversionService } from "../services/api";
+import { ParsedSarifResult, parseSarif } from "../services/sarifService";
 import { OscalPackage } from "../types";
-import { JSONTree } from "react-json-tree";
-import { parseSarif, ParsedSarifResult } from "../services/sarifService";
 import "./Documents.css";
 
 interface DocumentEntry {
@@ -63,6 +64,9 @@ const Documents: React.FC = () => {
     packageId,
   } = useOscal();
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [selectedValidationResult, setSelectedValidationResult] =
+    useState<ParsedSarifResult | null>(null);
   const [footerVisible, setFooterVisible] = useState(false);
   const [footerHeight, setFooterHeight] = useState(300); // Default height in pixels
   const router = useIonRouter();
@@ -81,9 +85,6 @@ const Documents: React.FC = () => {
   const [validationResults, setValidationResults] = useState<
     ParsedSarifResult[]
   >([]);
-  const [expandedResults, setExpandedResults] = useState<Set<number>>(
-    new Set()
-  );
   const [showMetapathResults, setShowMetapathResults] = useState(false);
 
   // Constraint files state
@@ -97,6 +98,13 @@ const Documents: React.FC = () => {
   const [metapathExpression, setMetapathExpression] = useState<string>("");
   const [metapathResults, setMetapathResults] = useState<string | null>(null);
   const [queryingMetapath, setQueryingMetapath] = useState(false);
+
+  // Show validation footer when validation results are available
+  useEffect(() => {
+    if (validationResults.length > 0) {
+      setFooterVisible(true);
+    }
+  }, [validationResults]);
 
   // Function to check if the current document is a profile
   const isProfile = (document: Record<string, any> | null): boolean => {
@@ -170,21 +178,22 @@ const Documents: React.FC = () => {
     }
   }, [documentList, documentId, setDocumentId, router]);
 
-  // Get document ID from URL on initial load
+  // Get document ID from URL on initial load and handle sidebar visibility
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const docId = params.get("id");
     if (docId != null && docId !== documentId) {
       setDocumentId(docId);
+      setLeftSidebarVisible(false); // Hide sidebar when document is selected
     }
   }, [setDocumentId, documentId]);
 
-  // Show validation footer when validation results are available
+  // Show sidebar when no document is selected
   useEffect(() => {
-    if (validationResults.length > 0) {
-      setFooterVisible(true);
+    if (!documentId) {
+      setLeftSidebarVisible(true);
     }
-  }, [validationResults]);
+  }, [documentId]);
 
   const handleValidate = async () => {
     if (!selectedDocument || !documentId) return;
@@ -196,20 +205,17 @@ const Documents: React.FC = () => {
         documentId,
         constraintFiles
       );
-      const results = parseSarif(sarifData);
+      const results = parseSarif(sarifData).filter((x) => x.kind === "fail");
       setValidationResults(results);
 
-      // Check if there are any validation failures
-      const hasFailures = results.length > 0;
-
-      if (hasFailures) {
+      if (results.length > 0) {
         setToastColor("warning");
         setToastMessage(
           `Validation completed with ${results.length} issue${
             results.length !== 1 ? "s" : ""
           }`
         );
-        setFooterVisible(true); // Show the validation footer
+        setFooterVisible(true);
       } else {
         setToastColor("success");
         setToastMessage("Document validation successful - no issues found");
@@ -223,13 +229,12 @@ const Documents: React.FC = () => {
         }`
       );
       setShowToast(true);
-      setValidationResults([
-        {
-          ruleId: "error",
-          message: "Validation service error occurred",
-        },
-      ]);
-      setFooterVisible(true); // Show the validation footer
+      const errorResult = {
+        ruleId: "error",
+        message: "Validation service error occurred",
+      };
+      setValidationResults([errorResult]);
+      setFooterVisible(true);
     } finally {
       setValidating(false);
     }
@@ -267,30 +272,35 @@ const Documents: React.FC = () => {
     }
   };
 
-  const handleResolveProfile = async () => {
+  const handleResolveProfile = async (targetFormat: string) => {
     if (!selectedDocument || !documentId || !packageId) return;
 
     setResolving(true);
     try {
-      // Use the GET endpoint for more reliable profile resolution
       const resolved = await ApiService.resolvePackageProfile(
         packageId,
         documentId
       );
 
-      // Create a download for the resolved profile
-      const blob = new Blob([resolved], { type: "application/json" });
+      // Convert the resolved profile to the target format if it's not JSON
+      const finalContent =
+        targetFormat === "json"
+          ? resolved
+          : await ConversionService.convertFile(
+              new File([resolved], documentId),
+              targetFormat
+            );
+
+      const blob = new Blob([finalContent], { type: "application/json" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
 
-      // Format the filename with -resolved suffix
       const filenameParts = documentId.split(".");
-      const extension = filenameParts.pop() || "json";
+      filenameParts.pop(); // Remove old extension
       const baseName = filenameParts.join(".");
-      a.download = `${baseName}-resolved.${extension}`;
+      a.download = `${baseName}-resolved.${targetFormat}`;
 
-      // Trigger the download
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -370,12 +380,14 @@ const Documents: React.FC = () => {
           <IonToolbar>
             <IonTitle>Documents</IonTitle>
           </IonToolbar>
+          {loading && <IonProgressBar type="indeterminate" />}
         </IonHeader>
         <IonContent
           style={{ paddingBottom: validationResults.length > 0 ? "50px" : "0" }}
         >
           <ImportOscal
             onImport={(documentId) => {
+              setLeftSidebarVisible(false);
               router.push(`/documents?id=${documentId}`);
             }}
           />
@@ -394,6 +406,7 @@ const Documents: React.FC = () => {
                   color={documentId === id ? "primary" : undefined}
                   onClick={() => {
                     setDocumentId(id);
+                    setLeftSidebarVisible(false);
                     router.push(`/documents?id=${id}`);
                   }}
                 >
@@ -451,6 +464,7 @@ const Documents: React.FC = () => {
         />
         <IonHeader>
           <IonToolbar>
+            {loading && <IonProgressBar type="indeterminate" />}
             <IonButtons slot="start">
               <IonButton
                 onClick={() => setLeftSidebarVisible(!leftSidebarVisible)}
@@ -471,13 +485,25 @@ const Documents: React.FC = () => {
                 </IonButton>
 
                 {isProfile(selectedDocument) && (
-                  <IonButton
-                    onClick={handleResolveProfile}
+                  <IonSelect
+                    value={""}
+                    onIonChange={(e) => {
+                      if (e.detail.value) {
+                        handleResolveProfile(e.detail.value);
+                      }
+                    }}
+                    interface="popover"
                     disabled={resolving}
                   >
-                    <IonIcon slot="start" icon={documentOutline} />
-                    {resolving ? "Resolving..." : "Resolve Profile"}
-                  </IonButton>
+                    <IonSelectOption disabled value="">
+                      <IonChip>
+                        {resolving ? "RESOLVING..." : "RESOLVE"}
+                      </IonChip>
+                    </IonSelectOption>
+                    <IonSelectOption value="json">to JSON</IonSelectOption>
+                    <IonSelectOption value="yaml">to YAML</IonSelectOption>
+                    <IonSelectOption value="xml">to XML</IonSelectOption>
+                  </IonSelect>
                 )}
 
                 <IonSelect
@@ -488,7 +514,7 @@ const Documents: React.FC = () => {
                   interface="popover"
                 >
                   <IonSelectOption disabled value="">
-                    Convert
+                    <IonChip>CONVERT</IonChip>
                   </IonSelectOption>
                   <IonSelectOption value="json">to JSON</IonSelectOption>
                   <IonSelectOption value="yaml">to YAML</IonSelectOption>
@@ -517,6 +543,9 @@ const Documents: React.FC = () => {
               }}
             >
               <IonToolbar>
+                <IonButtons slot="start">
+                  <IonIcon />
+                </IonButtons>
                 <IonInput
                   value={metapathExpression}
                   onKeyDown={(event) => {
@@ -630,410 +659,182 @@ const Documents: React.FC = () => {
             </IonRow>
           </IonGrid>
         </IonContent>
-        <IonFooter>
-          <div
-            className="validation-footer"
-            style={{
-              right: 0,
-              height: footerVisible ? `${footerHeight}px` : "40px",
-              boxShadow: "0 -4px 10px rgba(0, 0, 0, 0.2)",
-              backgroundColor: "var(--ion-background-color)",
-              borderTop: "2px solid var(--ion-color-danger)",
-              transition: "height 0.3s ease",
-              zIndex: 20,
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
-            {/* Footer Header */}
+
+        {/* Validation Results Modal */}
+        <ValidationResultsModal
+          isOpen={showValidationModal}
+          onDismiss={() => {
+            setShowValidationModal(false);
+            setSelectedValidationResult(null);
+          }}
+          results={validationResults}
+          selectedResult={selectedValidationResult}
+        />
+
+        {/* Footer - Validation Results */}
+        {validationResults.length > 0 && (
+          <IonFooter>
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "0 10px",
-                height: "40px",
-                borderBottom: footerVisible
-                  ? "1px solid var(--ion-border-color)"
-                  : "none",
-                backgroundColor: "var(--ion-color-danger)",
-                cursor: "pointer",
+                height: footerVisible ? `${footerHeight}px` : "40px",
+                backgroundColor: "var(--ion-background-color)",
+                borderTop: "2px solid var(--ion-color-danger)",
+                transition: "height 0.3s ease",
+                overflow: "hidden",
               }}
-              onClick={() => setFooterVisible(!footerVisible)}
             >
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <IonIcon
-                  icon={alertCircleOutline}
-                  color={validationResults.length > 0 ? "light" : "danger"}
-                  style={{ marginRight: "10px", fontSize: "20px" }}
-                />
-                <span style={{ fontWeight: "bold", color: "white" }}>
-                  Validation Results
-                  {validationResults.length > 0 && (
+              {/* Footer Header */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "0 10px",
+                  height: "40px",
+                  backgroundColor: "var(--ion-color-danger)",
+                  cursor: "pointer",
+                }}
+                onClick={() => setFooterVisible(!footerVisible)}
+              >
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <IonIcon
+                    icon={alertCircleOutline}
+                    color="light"
+                    style={{ marginRight: "10px", fontSize: "20px" }}
+                  />
+                  <span style={{ fontWeight: "bold", color: "white" }}>
+                    Validation Results
                     <IonBadge
                       color="warning"
                       style={{ marginLeft: "10px", fontWeight: "bold" }}
                     >
                       {validationResults.length}
                     </IonBadge>
-                  )}
-                </span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                {/* Resize handle */}
-                {footerVisible && (
-                  <div
-                    style={{
-                      cursor: "ns-resize",
-                      padding: "0 10px",
-                      marginRight: "10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                    onMouseDown={(e) => {
-                      const startY = e.clientY;
-                      const startHeight = footerHeight;
-
-                      const onMouseMove = (moveEvent: MouseEvent) => {
-                        const deltaY = startY - moveEvent.clientY;
-                        const newHeight = Math.max(
-                          100,
-                          Math.min(600, startHeight + deltaY)
-                        );
-                        setFooterHeight(newHeight);
-                      };
-
-                      const onMouseUp = () => {
-                        document.removeEventListener("mousemove", onMouseMove);
-                        document.removeEventListener("mouseup", onMouseUp);
-                      };
-
-                      document.addEventListener("mousemove", onMouseMove);
-                      document.addEventListener("mouseup", onMouseUp);
-                    }}
-                  >
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {/* Resize handle */}
+                  {footerVisible && (
                     <div
                       style={{
-                        width: "20px",
-                        height: "4px",
-                        backgroundColor: "var(--ion-color-medium)",
-                        borderRadius: "2px",
+                        cursor: "ns-resize",
+                        padding: "0 10px",
+                        marginRight: "10px",
+                        display: "flex",
+                        alignItems: "center",
                       }}
-                    ></div>
-                  </div>
-                )}
+                      onMouseDown={(e) => {
+                        const startY = e.clientY;
+                        const startHeight = footerHeight;
 
-                <IonIcon
-                  icon={
-                    footerVisible
-                      ? "chevron-down-outline"
-                      : "chevron-up-outline"
-                  }
-                  style={{ fontSize: "20px", color: "white" }}
-                />
+                        const onMouseMove = (moveEvent: MouseEvent) => {
+                          const deltaY = startY - moveEvent.clientY;
+                          const newHeight = Math.max(
+                            100,
+                            Math.min(600, startHeight + deltaY)
+                          );
+                          setFooterHeight(newHeight);
+                        };
+
+                        const onMouseUp = () => {
+                          document.removeEventListener(
+                            "mousemove",
+                            onMouseMove
+                          );
+                          document.removeEventListener("mouseup", onMouseUp);
+                        };
+
+                        document.addEventListener("mousemove", onMouseMove);
+                        document.addEventListener("mouseup", onMouseUp);
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "20px",
+                          height: "4px",
+                          backgroundColor: "white",
+                          borderRadius: "2px",
+                        }}
+                      ></div>
+                    </div>
+                  )}
+                  <IonIcon
+                    icon={
+                      footerVisible
+                        ? "chevron-down-outline"
+                        : "chevron-up-outline"
+                    }
+                    style={{ fontSize: "20px", color: "white" }}
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Footer Content */}
-            {footerVisible && (
-              <div style={{ flex: 1, overflow: "hidden" }}>
-                {validationResults.length > 0 ? (
+              {/* Footer Content */}
+              {footerVisible && (
+                <div
+                  style={{ height: `${footerHeight - 40}px`, overflow: "auto" }}
+                >
                   <Virtuoso
-                    style={{ height: `${footerHeight - 40}px` }}
+                    style={{ height: "100%" }}
                     totalCount={validationResults.length}
                     itemContent={(index) => {
                       const result = validationResults[index];
-                      const isExpanded = expandedResults.has(index);
-
                       return (
-                        <React.Fragment>
-                          <IonItem
-                            button
-                            onClick={() => {
-                              setExpandedResults((prev) => {
-                                const newSet = new Set(prev);
-                                if (newSet.has(index)) {
-                                  newSet.delete(index);
-                                } else {
-                                  newSet.add(index);
-                                }
-                                return newSet;
-                              });
-                            }}
-                            detail={true}
-                            color="light"
-                          >
-                            <IonIcon
-                              icon={closeCircleOutline}
-                              color="danger"
-                              slot="start"
-                              style={{ marginRight: "10px" }}
-                            />
-                            <IonLabel
+                        <IonItem
+                          button
+                          onClick={() => {
+                            setSelectedValidationResult(result);
+                            setShowValidationModal(true);
+                          }}
+                          detail={true}
+                          color="light"
+                        >
+                          <IonIcon
+                            icon={alertCircleOutline}
+                            color="danger"
+                            slot="start"
+                            style={{ marginRight: "10px" }}
+                          />
+                          <IonLabel>
+                            <div
                               style={{
-                                whiteSpace: "normal",
-                                overflow: "visible",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
                               }}
                             >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                }}
-                              >
-                                <strong>{result.ruleId}</strong>
-                                {result.level && (
-                                  <IonBadge
-                                    color={
-                                      result.level === "error"
-                                        ? "danger"
-                                        : result.level === "warning"
-                                        ? "warning"
-                                        : "medium"
-                                    }
-                                    style={{
-                                      marginLeft: "8px",
-                                      textTransform: "capitalize",
-                                    }}
-                                  >
-                                    {result.level}
-                                  </IonBadge>
-                                )}
-                              </div>
-                              <div
-                                style={{ fontSize: "0.9em", marginTop: "5px" }}
-                              >
-                                {(result.message as any).text}
-                              </div>
-                            </IonLabel>
-                          </IonItem>
-
-                          {isExpanded && (
-                            <IonItem
-                              lines="none"
-                              className="validation-details"
+                              <strong>{result.ruleId}</strong>
+                              {result.level && (
+                                <IonBadge
+                                  color={
+                                    result.level === "error"
+                                      ? "danger"
+                                      : result.level === "warning"
+                                      ? "warning"
+                                      : "medium"
+                                  }
+                                  style={{ marginLeft: "8px" }}
+                                >
+                                  {result.level}
+                                </IonBadge>
+                              )}
+                            </div>
+                            <div
+                              style={{ fontSize: "0.9em", marginTop: "5px" }}
                             >
-                              <div
-                                className="validation-accordion-content"
-                                style={{
-                                  padding: "10px 15px",
-                                  backgroundColor:
-                                    "var(--ion-color-light-shade)",
-                                  width: "100%",
-                                  borderRadius: "0 0 8px 8px",
-                                }}
-                              >
-                                {result.helpUri && (
-                                  <div
-                                    className="help-uri"
-                                    style={{ marginBottom: "15px" }}
-                                  >
-                                    <h4
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                      }}
-                                    >
-                                      <IonIcon
-                                        icon={linkOutline}
-                                        style={{ marginRight: "5px" }}
-                                      />
-                                      Help Documentation
-                                    </h4>
-                                    <a
-                                      href={result.helpUri}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      style={{
-                                        color: "var(--ion-color-primary)",
-                                        wordBreak: "break-all",
-                                        display: "block",
-                                        padding: "8px",
-                                        backgroundColor:
-                                          "var(--ion-color-light)",
-                                        borderRadius: "4px",
-                                        textDecoration: "none",
-                                      }}
-                                    >
-                                      {result.helpUri}
-                                    </a>
-                                  </div>
-                                )}
-
-                                {result.ruleDescription && (
-                                  <div
-                                    className="rule-description"
-                                    style={{ marginBottom: "15px" }}
-                                  >
-                                    <h4>Description</h4>
-                                    <p
-                                      style={{
-                                        backgroundColor:
-                                          "var(--ion-color-light)",
-                                        padding: "8px",
-                                        borderRadius: "4px",
-                                        fontSize: "0.9em",
-                                      }}
-                                    >
-                                      {result.ruleDescription}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {result.location && (
-                                  <div className="location-info">
-                                    <h4>Location</h4>
-
-                                    {result.location.logicalPath && (
-                                      <div style={{ marginBottom: "10px" }}>
-                                        <strong>Path:</strong>
-                                        <div
-                                          style={{
-                                            backgroundColor:
-                                              "var(--ion-color-light)",
-                                            padding: "8px",
-                                            borderRadius: "4px",
-                                            fontSize: "0.9em",
-                                            fontFamily: "monospace",
-                                            overflowX: "auto",
-                                            marginTop: "5px",
-                                          }}
-                                        >
-                                          {result.location.logicalPath}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {result.location.uri && (
-                                      <p>
-                                        <strong>File:</strong>{" "}
-                                        {result.location.uri}
-                                      </p>
-                                    )}
-
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        flexWrap: "wrap",
-                                        gap: "10px",
-                                        marginBottom: "10px",
-                                      }}
-                                    >
-                                      {result.location.startLine && (
-                                        <div>
-                                          <strong>Line:</strong>{" "}
-                                          {result.location.startLine}
-                                          {result.location.endLine &&
-                                          result.location.endLine !==
-                                            result.location.startLine
-                                            ? ` - ${result.location.endLine}`
-                                            : ""}
-                                        </div>
-                                      )}
-
-                                      {result.location.startColumn && (
-                                        <div>
-                                          <strong>Column:</strong>{" "}
-                                          {result.location.startColumn}
-                                          {result.location.endColumn &&
-                                          result.location.endColumn !==
-                                            result.location.startColumn
-                                            ? ` - ${result.location.endColumn}`
-                                            : ""}
-                                        </div>
-                                      )}
-
-                                      {result.location.charOffset !==
-                                        undefined && (
-                                        <div>
-                                          <strong>Offset:</strong>{" "}
-                                          {result.location.charOffset}
-                                        </div>
-                                      )}
-
-                                      {result.location.charLength !==
-                                        undefined && (
-                                        <div>
-                                          <strong>Length:</strong>{" "}
-                                          {result.location.charLength}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {result.location.snippet && (
-                                      <div>
-                                        <h4>Code Snippet</h4>
-                                        <pre
-                                          style={{
-                                            backgroundColor:
-                                              "var(--ion-color-medium-tint)",
-                                            padding: "10px",
-                                            borderRadius: "4px",
-                                            overflowX: "auto",
-                                            fontSize: "0.9em",
-                                            whiteSpace: "pre-wrap",
-                                            wordBreak: "break-all",
-                                          }}
-                                        >
-                                          {result.location.snippet}
-                                        </pre>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {result.guid && (
-                                  <div
-                                    style={{
-                                      marginTop: "10px",
-                                      fontSize: "0.8em",
-                                      color: "var(--ion-color-medium)",
-                                    }}
-                                  >
-                                    <strong>ID:</strong> {result.guid}
-                                  </div>
-                                )}
-                              </div>
-                            </IonItem>
-                          )}
-                        </React.Fragment>
+                              {(result.message as any).text}
+                            </div>
+                          </IonLabel>
+                        </IonItem>
                       );
                     }}
                   />
-                ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      height: "100%",
-                      padding: "20px",
-                      textAlign: "center",
-                      color: "var(--ion-color-medium)",
-                    }}
-                  >
-                    <IonIcon
-                      icon={checkmarkCircleOutline}
-                      style={{
-                        fontSize: "48px",
-                        color: "var(--ion-color-success)",
-                        marginBottom: "15px",
-                      }}
-                    />
-                    <h4>No Validation Issues</h4>
-                    <p>The document passed validation successfully.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </IonFooter>
+                </div>
+              )}
+            </div>
+          </IonFooter>
+        )}
       </IonPage>
-
-      {/* Footer - Validation Results */}
     </div>
   );
 };

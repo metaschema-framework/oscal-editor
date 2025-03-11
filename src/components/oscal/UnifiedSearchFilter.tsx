@@ -1,11 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  IonList, 
   IonItem, 
   IonLabel,
   IonCard,
-  IonCardHeader,
-  IonCardTitle,
   IonCardContent,
   IonBadge,
   IonIcon
@@ -21,37 +18,48 @@ interface UnifiedSearchFilterProps {
   };
 }
 
+const renderProps = (props: any[]) => (
+  <div className="props-container">
+    {props.map((prop, index) => (
+      <IonBadge key={index} className="prop-chip">
+        {prop.name}: {prop.value}
+        {prop.class && <span className="prop-class">[{prop.class}]</span>}
+      </IonBadge>
+    ))}
+  </div>
+);
+
+const renderParts = (parts: any[]) => (
+  <div className="parts-container">
+    {parts.map((part, index) => (
+      <div key={index} className="part-item">
+        <h4>{part.name}{part.title ? `: ${part.title}` : ''}</h4>
+        {part.prose && <p>{part.prose}</p>}
+      </div>
+    ))}
+  </div>
+);
+
 export const UnifiedSearchFilter: React.FC<UnifiedSearchFilterProps> = ({ catalog }) => {
   const [filteredItems, setFilteredItems] = useState<OscalItem[]>([]);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  const handleFilteredItemsChange = (items: OscalItem[]) => {
-    setFilteredItems(items);
-  };
-
-  // Generate a unique ID for each item
-  const getItemKey = (item: OscalItem) => {
-    return `${item.type}-${item.id || ''}-${item.level}`;
-  };
-
-  // Toggle expanded state for an item
   const toggleExpand = (itemKey: string) => {
-    const newExpandedItems = new Set(expandedItems);
-    if (expandedItems.has(itemKey)) {
-      newExpandedItems.delete(itemKey);
-    } else {
-      newExpandedItems.add(itemKey);
-    }
-    setExpandedItems(newExpandedItems);
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      prev.has(itemKey) ? newSet.delete(itemKey) : newSet.add(itemKey);
+      return newSet;
+    });
   };
 
-  // Render an individual item
-  const renderItem = (item: OscalItem) => {
-    const itemKey = getItemKey(item);
+  const renderItem = (item: OscalItem, index: number) => {
+    const itemKey = `${item.type}-${item.id || ''}-${item.level}`;
     const isExpanded = expandedItems.has(itemKey);
+    const isControl = item.type === 'control';
+    const itemData = isControl ? item.originalControl : item.originalGroup;
     
     return (
-      <IonCard key={itemKey} className={`item-card level-${item.level}`}>
+      <IonCard key={`${itemKey}-${index}`} className={`item-card level-${item.level}`}>
         <IonItem 
           button 
           detail={false} 
@@ -59,15 +67,15 @@ export const UnifiedSearchFilter: React.FC<UnifiedSearchFilterProps> = ({ catalo
           className="item-header"
         >
           <IonIcon 
-            icon={item.type === 'control' ? documentText : folderOpen} 
+            icon={isControl ? documentText : folderOpen} 
             slot="start" 
-            color={item.type === 'control' ? 'primary' : 'tertiary'}
+            color={isControl ? 'primary' : 'tertiary'}
           />
           <IonLabel>
             <h2>{item.title}</h2>
             <p>{item.id}</p>
           </IonLabel>
-          <IonBadge color={item.type === 'control' ? 'primary' : 'tertiary'} slot="end">
+          <IonBadge color={isControl ? 'primary' : 'tertiary'} slot="end">
             {item.type}
           </IonBadge>
           <IonIcon 
@@ -77,57 +85,10 @@ export const UnifiedSearchFilter: React.FC<UnifiedSearchFilterProps> = ({ catalo
           />
         </IonItem>
         
-        {isExpanded && (
+        {isExpanded && itemData && (
           <IonCardContent>
-            {item.type === 'control' && item.originalControl && (
-              <div className="control-details">
-                {item.originalControl.props && (
-                  <div className="props-container">
-                    {item.originalControl.props.map((prop, propIndex) => (
-                      <IonBadge key={propIndex} className="prop-chip">
-                        {prop.name}: {prop.value}
-                        {prop.class && <span className="prop-class">[{prop.class}]</span>}
-                      </IonBadge>
-                    ))}
-                  </div>
-                )}
-                {item.originalControl.parts && (
-                  <div className="parts-container">
-                    {item.originalControl.parts.map((part, partIndex) => (
-                      <div key={partIndex} className="part-item">
-                        <h4>{part.name}{part.title ? `: ${part.title}` : ''}</h4>
-                        {part.prose && <p>{part.prose}</p>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {item.type === 'group' && item.originalGroup && (
-              <div className="group-details">
-                {item.originalGroup.props && (
-                  <div className="props-container">
-                    {item.originalGroup.props.map((prop, propIndex) => (
-                      <IonBadge key={propIndex} className="prop-chip">
-                        {prop.name}: {prop.value}
-                        {prop.class && <span className="prop-class">[{prop.class}]</span>}
-                      </IonBadge>
-                    ))}
-                  </div>
-                )}
-                {item.originalGroup.parts && (
-                  <div className="parts-container">
-                    {item.originalGroup.parts.map((part, partIndex) => (
-                      <div key={partIndex} className="part-item">
-                        <h4>{part.name}{part.title ? `: ${part.title}` : ''}</h4>
-                        {part.prose && <p>{part.prose}</p>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            {itemData.props && renderProps(itemData.props)}
+            {itemData.parts && renderParts(itemData.parts)}
           </IonCardContent>
         )}
       </IonCard>
@@ -138,13 +99,13 @@ export const UnifiedSearchFilter: React.FC<UnifiedSearchFilterProps> = ({ catalo
     <div className="unified-search-filter">
       <SearchFilterControls 
         catalog={catalog}
-        onFilteredItemsChange={handleFilteredItemsChange}
+        onFilteredItemsChange={setFilteredItems}
       />
       
       <div className="filtered-items-container">
         {filteredItems.length > 0 ? (
           <div className="results-list">
-            {filteredItems.map(item => renderItem(item))}
+            {filteredItems.map((item, i) => renderItem(item, i))}
           </div>
         ) : (
           <div className="no-results">

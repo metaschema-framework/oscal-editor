@@ -18,7 +18,8 @@ import {
   IonContent,
   IonFab,
   IonFabButton,
-  IonToast
+  IonToast,
+  IonBadge
 } from '@ionic/react';
 import { add, close, checkmark, trash } from 'ionicons/icons';
 
@@ -116,7 +117,10 @@ const ConstraintSelector: React.FC<ConstraintSelectorProps> = ({ onConstraintsCh
     <>
       <IonButton onClick={() => setShowModal(true)}>
         <IonIcon slot="start" icon={checkmark} />
-        Constraint Files ({constraintFiles.filter(file => file.selected).length})
+        Constraints 
+        <IonBadge color='light'>
+        ({constraintFiles.filter(file => file.selected).length})
+        </IonBadge>
       </IonButton>
 
       <IonModal isOpen={showModal} onDidDismiss={() => setShowModal(false)}>

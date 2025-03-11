@@ -13,16 +13,16 @@ export const RenderParts: React.FC<RenderPartsProps> = ({ parts }) => {
   return (
     <IonList>
       {parts.map((part, index) => (
-        <div key={index} className="part-item ion-padding-vertical">
-          {part.title && <h4 className="part-title">{part.title}</h4>}
-          {part.prose && <div className="part-prose">{part.prose}</div>}
-          {part.props && <RenderProps props={part.props} />}
-          {part.parts && part.parts.length > 0 && (
-            <div className="nested-content ion-padding">
+        <IonItem key={index}>
+          <IonLabel>
+            {part.title && <h3>{part.title}</h3>}
+            {part.prose && <p>{part.prose}</p>}
+            {part.props && <RenderProps props={part.props} />}
+            {part.parts && part.parts.length > 0 && (
               <RenderParts parts={part.parts} />
-            </div>
-          )}
-        </div>
+            )}
+          </IonLabel>
+        </IonItem>
       ))}
     </IonList>
   );

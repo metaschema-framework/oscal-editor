@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   IonSearchbar, 
   IonSegment, 
@@ -41,8 +41,8 @@ export const SearchFilterControls: React.FC<SearchFilterControlsProps> = ({
   const [filteredItems, setFilteredItems] = useState<OscalItem[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'controls' | 'groups'>('all');
 
-  // Create a searchable index from all items
-  const createSearchableIndex = (item: OscalItem): string => {
+  // Memoize helper functions
+  const createSearchableIndex = useCallback((item: OscalItem): string => {
     const parts = [
       item.id || '',
       item.title || '',
@@ -51,46 +51,9 @@ export const SearchFilterControls: React.FC<SearchFilterControlsProps> = ({
     ];
     
     return parts.join(' ').toLowerCase();
-  };
+  }, []);
 
-  // Flatten the controls and groups into a single array of items with searchable index
-  useEffect(() => {
-    const items: OscalItem[] = [];
-    
-    // Add top-level controls
-    if (catalog.controls) {
-      catalog.controls.forEach(control => {
-        const item: OscalItem = {
-          id: control.id,
-          title: control.title,
-          type: 'control',
-          props: control.props,
-          originalControl: control,
-          level: 0
-        };
-        
-        // Add searchable text for indexing
-        item.searchableText = createSearchableIndex(item);
-        items.push(item);
-        
-        // Add nested controls if any
-        if (control.controls) {
-          flattenNestedControls(control.controls, items, control, 1);
-        }
-      });
-    }
-    
-    // Add groups and their controls
-    if (catalog.groups) {
-      flattenGroups(catalog.groups, items, 0);
-    }
-    
-    setAllItems(items);
-    setFilteredItems(items);
-  }, [catalog]);
-
-  // Helper function to flatten nested controls
-  const flattenNestedControls = (
+  const flattenNestedControls = useCallback((
     controls: Control[], 
     items: OscalItem[], 
     parentControl?: Control, 
@@ -115,10 +78,9 @@ export const SearchFilterControls: React.FC<SearchFilterControlsProps> = ({
         flattenNestedControls(control.controls, items, control, level + 1);
       }
     });
-  };
+  }, [createSearchableIndex]);
 
-  // Helper function to flatten groups and their controls
-  const flattenGroups = (
+  const flattenGroups = useCallback((
     groups: ControlGroup[], 
     items: OscalItem[], 
     level: number = 0,
@@ -169,13 +131,49 @@ export const SearchFilterControls: React.FC<SearchFilterControlsProps> = ({
         flattenGroups(group.groups, items, level + 1, group);
       }
     });
-  };
+  }, [createSearchableIndex, flattenNestedControls]);
 
-  // Filter items based on search text and view mode
+  // Flatten the controls and groups into a single array of items with searchable index
   useEffect(() => {
+    const items: OscalItem[] = [];
+    
+    // Add top-level controls
+    if (catalog.controls) {
+      catalog.controls.forEach(control => {
+        const item: OscalItem = {
+          id: control.id,
+          title: control.title,
+          type: 'control',
+          props: control.props,
+          originalControl: control,
+          level: 0
+        };
+        
+        // Add searchable text for indexing
+        item.searchableText = createSearchableIndex(item);
+        items.push(item);
+        
+        // Add nested controls if any
+        if (control.controls) {
+          flattenNestedControls(control.controls, items, control, 1);
+        }
+      });
+    }
+    
+    // Add groups and their controls
+    if (catalog.groups) {
+      flattenGroups(catalog.groups, items, 0);
+    }
+    
+    setAllItems(items);
+    setFilteredItems(items);
+  }, [catalog]);
+
+  // Memoize filtered items
+  const filtered = useMemo(() => {
     const searchLower = searchText.toLowerCase();
     
-    const filtered = allItems.filter(item => {
+    return allItems.filter(item => {
       // Filter by type if needed
       if (viewMode === 'controls' && item.type !== 'control') return false;
       if (viewMode === 'groups' && item.type !== 'group') return false;
@@ -186,13 +184,16 @@ export const SearchFilterControls: React.FC<SearchFilterControlsProps> = ({
       
       return matchesSearch;
     });
-    
+  }, [searchText, allItems, viewMode]);
+
+  // Update filtered items state and notify parent
+  useEffect(() => {
     setFilteredItems(filtered);
     
     if (onFilteredItemsChange) {
       onFilteredItemsChange(filtered);
     }
-  }, [searchText, allItems, viewMode, onFilteredItemsChange]);
+  }, [filtered]);
 
   // Count controls and groups in filtered items
   const controlCount = filteredItems.filter(item => item.type === 'control').length;

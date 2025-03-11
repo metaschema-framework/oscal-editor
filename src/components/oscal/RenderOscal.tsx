@@ -54,19 +54,6 @@ const renderCatalog = (content: Catalog) => {
   return (
     <IonAccordionGroup>
       {content?.metadata && <RenderMetadata metadata={content.metadata} />}
-      
-      {/* Render a unified search component at the top level */}
-      {(content?.controls?.length || content?.groups?.length) && (
-        <IonAccordion value="search-filter">
-          <IonItem slot="header" color="light">
-            <IonLabel>Search Controls and Groups</IonLabel>
-          </IonItem>
-          <div className="ion-padding" slot="content">
-            <UnifiedSearchFilter catalog={unifiedCatalog} />
-          </div>
-        </IonAccordion>
-      )}
-      
       {content?.groups && <RenderGroups groups={content.groups} />}
       {content?.controls && <RenderControls controls={content.controls} />}
       {content?.['back-matter'] && <RenderBackMatter backMatter={content['back-matter']} />}
