@@ -1,17 +1,17 @@
-import React from 'react';
-import { IonAccordion, IonItem, IonLabel, IonList, IonChip, IonNote } from '@ionic/react';
+import React, { useState } from 'react';
+import { IonAccordion, IonItem, IonLabel, IonChip, IonIcon } from '@ionic/react';
+import { Virtuoso } from 'react-virtuoso';
+import { chevronForward, documentOutline } from 'ionicons/icons';
 import { BackMatter, Resource } from '../../types';
-import { RenderProps } from './RenderProps';
+import { ResourceDetailsModal } from './ResourceDetailsModal';
 
 interface RenderBackMatterProps {
   backMatter: BackMatter;
 }
 
-const openResource = (href: string, mediaType?: string) => {
-  window.open(href, '_blank');
-};
-
 export const RenderBackMatter: React.FC<RenderBackMatterProps> = ({ backMatter }) => {
+  const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
+
   if (!backMatter?.resources?.length) return null;
 
   return (
@@ -19,38 +19,34 @@ export const RenderBackMatter: React.FC<RenderBackMatterProps> = ({ backMatter }
       <IonItem slot="header" color="light">
         <IonLabel>Resources</IonLabel>
       </IonItem>
-      <div className="ion-padding" slot="content">
-        <IonList>
-          {backMatter.resources.map((resource: Resource, index: number) => (
-            <IonItem key={resource.uuid || index}>
+      <div className="ion-padding" slot="content" style={{ height: '60vh' }}>
+        <Virtuoso
+          data={backMatter.resources}
+          itemContent={(index, resource: Resource) => (
+            <IonItem button onClick={() => setSelectedResource(resource)}>
+              <IonIcon icon={documentOutline} slot="start" />
               <IonLabel>
                 <h2>{resource.title}</h2>
-                {resource.description && <p>{resource.description}</p>}
-                {resource.props && <RenderProps props={resource.props} />}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                  {resource.rlinks?.map((rlink, rlinkIndex) => (
-                    <div key={rlinkIndex} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {rlink['media-type'] && (
-                        <IonChip 
-                          color="tertiary" 
-                          onClick={() => openResource(rlink.href, rlink['media-type'])}
-                        >
-                          {rlink['media-type'].split('/')[1] || rlink['media-type']}
-                        </IonChip>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {resource.citation && (
-                  <IonNote className="ion-margin-top">
-                    <p><strong>Citation:</strong> {resource.citation.text}</p>
-                  </IonNote>
-                )}
+                <p>{resource.description ? resource.description.substring(0, 100) + (resource.description.length > 100 ? '...' : '') : 'No description'}</p>
               </IonLabel>
+              {resource.rlinks?.map((rlink, rlinkIndex) => (
+                rlink['media-type'] && (
+                  <IonChip key={rlinkIndex} color="tertiary" slot="end">
+                    <IonLabel>{rlink['media-type'].split('/')[1] || rlink['media-type']}</IonLabel>
+                  </IonChip>
+                )
+              ))}
+              <IonIcon icon={chevronForward} slot="end" />
             </IonItem>
-          ))}
-        </IonList>
+          )}
+          style={{ height: '100%' }}
+        />
       </div>
+      <ResourceDetailsModal
+        isOpen={!!selectedResource}
+        onClose={() => setSelectedResource(null)}
+        resource={selectedResource || {} as Resource}
+      />
     </IonAccordion>
   );
 };

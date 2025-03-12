@@ -1,40 +1,17 @@
-import React from 'react';
-import { IonAccordion, IonItem, IonLabel, IonList, IonChip } from '@ionic/react';
-import { Component, ResponsibleRole } from '../../types';
-import { RenderProps } from './RenderProps';
+import React, { useState } from 'react';
+import { IonAccordion, IonItem, IonLabel, IonChip, IonIcon } from '@ionic/react';
+import { Virtuoso } from 'react-virtuoso';
+import { chevronForward } from 'ionicons/icons';
+import { Component } from '../../types';
+import { ComponentDetailsModal } from './ComponentDetailsModal';
 
 interface RenderComponentsProps {
   components: Component[];
 }
 
-const renderParties = (partyUuids: string[]) => {
-  return partyUuids.map(uuid => (
-    <IonChip key={uuid} color="light">
-      <IonLabel>{uuid}</IonLabel>
-    </IonChip>
-  ));
-};
-
-const renderResponsibleRoles = (roles: ResponsibleRole[]) => {
-  if (!roles?.length) return null;
-
-  return (
-    <div className="roles-container">
-      <h3 className="nested-header">Responsible Roles</h3>
-      {roles.map((role, roleIndex) => (
-        <div key={roleIndex}>
-          <IonChip color="medium">
-            <IonLabel>{role["role-id"]}</IonLabel>
-          </IonChip>
-          {role.props && <RenderProps props={role.props} />}
-          {role["party-uuids"] && renderParties(role["party-uuids"])}
-        </div>
-      ))}
-    </div>
-  );
-};
-
 export const RenderComponents: React.FC<RenderComponentsProps> = ({ components }) => {
+  const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
+
   if (!components?.length) return null;
 
   return (
@@ -42,34 +19,34 @@ export const RenderComponents: React.FC<RenderComponentsProps> = ({ components }
       <IonItem slot="header" color="light">
         <IonLabel>Components</IonLabel>
       </IonItem>
-      <div className="ion-padding" slot="content">
-        <IonList>
-          {components.map((component, index) => (
-            <IonItem key={component.uuid || index}>
+      <div className="ion-padding" slot="content" style={{ height: '60vh' }}>
+        <Virtuoso
+          data={components}
+          itemContent={(index, component: Component) => (
+            <IonItem button onClick={() => setSelectedComponent(component)}>
               <IonLabel>
-                <div className="by-component-header">
-                  <h2>{component.title}</h2>
-                  <IonChip color="medium">
-                    <IonLabel>{component.type}</IonLabel>
-                  </IonChip>
-                  {component.status && (
-                    <IonChip color="warning">
-                      <IonLabel>Status: {component.status.state}</IonLabel>
-                    </IonChip>
-                  )}
-                </div>
-                {component.description && <p>{component.description}</p>}
-                {component.purpose && <p><strong>Purpose:</strong> {component.purpose}</p>}
-                {component.props && <RenderProps props={component.props} />}
-                {component["responsible-roles"] && renderResponsibleRoles(component["responsible-roles"])}
-                {component.status?.remarks && (
-                  <p className="status-remarks">{component.status.remarks}</p>
-                )}
+                <h2>{component.title}</h2>
+                <p>{component.description ? component.description.substring(0, 100) + (component.description.length > 100 ? '...' : '') : 'No description'}</p>
               </IonLabel>
+              <IonChip color="medium" slot="end">
+                <IonLabel>{component.type}</IonLabel>
+              </IonChip>
+              {component.status && (
+                <IonChip color="warning" slot="end">
+                  <IonLabel>{component.status.state}</IonLabel>
+                </IonChip>
+              )}
+              <IonIcon icon={chevronForward} slot="end" />
             </IonItem>
-          ))}
-        </IonList>
+          )}
+          style={{ height: '100%' }}
+        />
       </div>
+      <ComponentDetailsModal
+        isOpen={!!selectedComponent}
+        onClose={() => setSelectedComponent(null)}
+        component={selectedComponent || {} as Component}
+      />
     </IonAccordion>
   );
 };
