@@ -142,6 +142,13 @@ const Documents: React.FC = () => {
 
   // Load selected document content when documentId changes
   useEffect(() => {
+    // Clear validation results and metapath query when document changes
+    setValidationResults([]);
+    setMetapathResults(null);
+    setShowMetapathResults(false);
+    setMetapathExpression("");
+    setFooterVisible(false);
+
     const loadSelectedDocument = async () => {
       if (!documentId || !packageId) {
         setSelectedDocument(null);
@@ -547,7 +554,6 @@ const Documents: React.FC = () => {
                   <IonIcon />
                 </IonButtons>
                 <IonInput
-                  value={metapathExpression}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       handleMetapathQuery();
